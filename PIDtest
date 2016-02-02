@@ -1,0 +1,157 @@
+#include "DualVNH5019MotorShield.h"
+
+
+DualVNH5019MotorShield md;
+
+void stopIfFault()
+{
+  if (md.getM1Fault())
+  {
+    Serial.println("M1 fault");
+    while (1);
+  }
+  if (md.getM2Fault())
+  {
+    Serial.println("M2 fault");
+    while (1);
+  }
+}
+
+double calc_rpm(double pulse)
+{
+  double encoder_rpm = (562.25 * 2 * pulse) / 1000000;
+  encoder_rpm = 60 / encoder_rpm;
+  return encoder_rpm;
+}
+
+double conv_speedM1(double rpm)
+{
+  int spd = (rpm + 4.2453) / 0.3891;
+  return spd;
+}
+
+double conv_speedM2(double rpm)
+{
+  int spd = (rpm + 8.4265) / 0.4019;
+  return spd;
+}
+
+void setup()
+{
+  Serial.begin(115200);
+  Serial.println("Dual VNH5019 Motor Shield");
+
+  md.setM1Speed(250);
+  md.setM2Speed(250);
+
+  md.init();
+}
+
+void loop()
+{
+  // Motor M1 variables
+  double m1CurrentRPM, m1NewRPM, m1NewSpeed;
+  double m1e0 = 0, m1e1 = 0, m1e2 = 0; 
+  double m1k1e0 = 0, m1k2e1 = 0, m1k3e2 = 0;
+ 
+  // Motor M2 variables
+  double m2CurrentRPM, m2NewRPM, m2NewSpeed;
+  double m2e0 = 0, m2e1 = 0, m2e2 = 0; 
+  double m2k1e0 = 0, m2k2e1 = 0, m2k3e2 = 0;
+  
+  // Motor M1 Ideal RPM - Speed 250 -> 93.0297
+  int idealRpmM1;
+  idealRpmM1 = 93;
+
+  // Motor M2 Ideal RPM - Speed 250 -> 92.0485
+  int idealRpmM2;
+  idealRpmM2 = 92;
+
+  // Trial & Error for Motor M1 - Kp, Ki, Kd
+  double m1kp = 1;
+  double m1ki = 2.6;
+  double m1kd = 0.5;
+
+  // Trial & Error for Motor M2 - Kp, Ki, Kd
+  double m2kp = 0.8;
+  double m2ki = 2.4 ;
+  double m2kd = 0.2 ;
+
+  // Motor M1 - K1, K2, K3
+  double m1k1 = m1kp + m1ki + m1kd;
+  double m1k2 = ( - m1kp ) - ( 2 * m1kd );
+  double m1k3 = m1kd;
+
+  // Motor M2 - K1, K2, K3
+  double m2k1 = m2kp + m2ki + m2kd ;
+  double m2k2 = ( - m2kp ) - ( 2 * m2kd );
+  double m2k3 = m2kd;
+  
+  // ==== Reading in Motor 1 - First Error ============================
+  m1CurrentRPM = calc_rpm(pulseIn(3, HIGH));
+  m1e0 = idealRpmM1 - m1CurrentRPM;
+  m1k1e0 = (m1k1 * m1e0);
+
+  // Calculate u[k] = u[k-1] + k1 * e[k] + k2 * e[k-1] + k3 * e[k-2]
+  m1NewRPM = m1CurrentRPM + m1k1e0 + m1k2e1 + m1k3e2;
+  m1NewSpeed = conv_speed1(m1NewRPM);
+  md.setM1Speed(m1NewSpeed);
+  // ==================================================================
+  
+  // ==== Reading in Motor 2 - First Error ============================
+  m2CurrentRPM = calc_rpm(pulseIn(5, HIGH));
+  m2e0 = idealRpmM2 - m2CurrentRPM;
+  m2k1e0 = (m2k1 * m2e0);
+
+  // Calculate u[k] = u[k-1] + k1 * e[k] + k2 * e[k-1] + k3 * e[k-2]
+  m2NewRPM = m2CurrentRPM + m2k1e0 + m2k2e1 + m2k3e2;
+  m2NewSpeed = conv_speed2(m2NewRPM);
+  md.setM2Speed(m2NewSpeed);
+  // ==================================================================
+
+  // ==== Reading in Motor 1 - Second Error ===========================
+  m1CurrentRPM = calc_rpm(pulseIn(3, HIGH));
+  m1e1 = idealRpmM1 - m1CurrentRPM;
+  m1k2e1 = (m1k2 * m1e1);
+  
+  // Calculate u[k] = u[k-1] + k1 * e[k] + k2 * e[k-1] + k3 * e[k-2]
+  m1NewRPM = m1CurrentRPM + m1k1e0 + m1k2e1 + m1k3e2;
+  m1NewSpeed = conv_speed1(m1NewRPM);
+  md.setM1Speed(m1NewSpeed);
+  // ==================================================================
+
+  // ==== Reading in Motor 2 - Second Error ===========================
+  m2CurrentRPM = calc_rpm(pulseIn(5, HIGH));
+  m2e1 = idealRpmM2 - m2CurrentRPM;
+  m2k2e1 = (m2k2 * m2e1);
+
+  // Calculate u[k] = u[k-1] + k1 * e[k] + k2 * e[k-1] + k3 * e[k-2]
+  m2NewRPM = m2CurrentRPM + m2k1e0 + m2k2e1 + m2k3e2;
+  m2NewSpeed = conv_speed2(m2NewRPM);
+  md.setM2Speed(m2NewSpeed);
+  // ==================================================================
+
+  // ==== Reading in Motor 1 - Third Error ============================
+  m1CurrentRPM = calc_rpm(pulseIn(3, HIGH));
+  m1e2 = idealRpmM1 - m1CurrentRPM;
+  m1k3e2 = (m1k3 * m1e2);
+  
+  // Calculate u[k] = u[k-1] + k1 * e[k] + k2 * e[k-1] + k3 * e[k-2]
+  m1NewRPM = m1CurrentRPM + m1k1e0 + m1k2e1 + m1k3e2;
+  m1NewSpeed = conv_speed1(m1NewRPM);
+  md.setM1Speed(m1NewSpeed);
+  // ==================================================================
+
+  // ==== Reading in Motor 2 - Third Error ============================
+  m2CurrentRPM = calc_rpm(pulseIn(5, HIGH));
+  m2e2 = idealRpmM2 - m2CurrentRPM;
+  m2k3e2 = (m2k3 * m2e2);
+
+  // Calculate u[k] = u[k-1] + k1 * e[k] + k2 * e[k-1] + k3 * e[k-2]
+  m2NewRPM = m2CurrentRPM + m2k1e0 + m2k2e1 + m2k3e2;
+  m2NewSpeed = conv_speed2(m2NewRPM);
+  md.setM2Speed(m2NewSpeed);
+  // ==================================================================
+  
+  delay (0.054);
+}
